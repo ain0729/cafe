@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const context = {};
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'menu.js'), 'utf8') + ';globalThis.catalog=menu', context);
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'public', 'menu.js'), 'utf8') + ';globalThis.catalog=menu', context);
 const catalog = JSON.parse(JSON.stringify(context.catalog)).map((group, g) => ({
   ...group, items: group.items.map((item, i) => ({ ...item, id: `${g}-${i}`, category: group.category }))
 }));
@@ -101,3 +101,4 @@ function createStore(filename) {
   return {db,q,tx,balance,getOrder,ownOrder,price,createOrder,redeem,applyPayment,cancelReward,serialize,catalog,close:()=>db.close()};
 }
 module.exports = {createStore,fail};
+

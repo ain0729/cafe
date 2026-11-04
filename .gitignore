@@ -8,3 +8,6 @@ backup-*/
 !.env.example
 *.sqlite*
 
+
+archive/
+/public/images/*평면도*

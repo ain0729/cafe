@@ -58,7 +58,7 @@ function createApp(options={}) {
   const lookup=order=>gateway('GET','/orders/'+encodeURIComponent(order.id));
   async function locked(id,fn) { if (locks.has(id)) fail('주문을 처리 중입니다. 잠시 후 다시 확인해주세요.',409); locks.add(id); try { return await fn(); } finally { locks.delete(id); } }
   function json(res,value,status=200) { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'}); res.end(JSON.stringify(value)); }
-  const staticFiles={'/cart.html':'cart.html','/order.html':'order.html','/login.html':'login.html','/signup.html':'signup.html','/membership.html':'membership.html','/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/menu.js':'menu.js','/commerce.js':'commerce.js','/commerce.css':'commerce.css','/admin':'admin.html','/admin.js':'admin.js'};
+  const staticFiles={'/space.html':'space.html',"/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%201.png":"images/카페 내부 1.png","/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%202.png":"images/카페 내부 2.png","/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%203.png":"images/카페 내부 3.png",'/cart.html':'cart.html','/order.html':'order.html','/login.html':'login.html','/signup.html':'signup.html','/membership.html':'membership.html','/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/menu.js':'menu.js','/commerce.js':'commerce.js','/commerce.css':'commerce.css','/admin':'admin.html','/admin.js':'admin.js'};
   const server=http.createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','same-origin');
@@ -69,8 +69,8 @@ function createApp(options={}) {
       if (!url.pathname.startsWith('/api/')) {
         if (req.method!=='GET' && req.method!=='HEAD') fail('허용되지 않은 요청입니다.',405);
         const filename=staticFiles[url.pathname]; if (!filename) fail('페이지를 찾을 수 없습니다.',404);
-        res.setHeader('Content-Type',filename.endsWith('.html')?'text/html; charset=utf-8':filename.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8');
-        res.end(req.method==='HEAD'?'':fs.readFileSync(path.join(__dirname,filename))); return;
+        res.setHeader('Content-Type',filename.endsWith('.png')?'image/png':filename.endsWith('.html')?'text/html; charset=utf-8':filename.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8');
+        res.end(req.method==='HEAD'?'':fs.readFileSync(path.join(__dirname,'public',filename))); return;
       }
       if (!['GET','POST'].includes(req.method)) fail('허용되지 않은 요청입니다.',405);
       if (req.method==='POST') {
@@ -194,3 +194,4 @@ if (require.main===module) {
   app.server.listen(port,process.env.HOST || '127.0.0.1',()=>console.log(`CAFE: ${app.origin}\n이 창을 열어두세요. 종료: Ctrl+C`));
 }
 module.exports={createApp};
+

@@ -53,3 +53,12 @@ OneDrive 동기화 폴더의 DB를 여러 컴퓨터에서 동시에 열지 마�
 
 ## 페이지 이동
 홈 `index.html` → 주문 `order.html`, 회원가입 `signup.html`, 로그인 `login.html`, 내 스탬프 `membership.html`로 각각 이동합니다. 주문 메뉴는 서버 설정이나 로그인 여부와 무관하게 볼 수 있고 담기도 가능합니다. 주문 중 로그인하면 장바구니를 보존하고 주문 페이지로 돌아옵니다. 계정과 실제 결제는 `start.bat` 실행 후 localhost에서 이용하세요.
+
+## 폴더 정리
+- public/: HTML·CSS·화면 JavaScript. 메뉴 수정은 public/menu.js.
+- public/images/: 카페 이미지 원본. 평면도와 외관은 보관만 하고 서버에 공개하지 않습니다.
+- data/: 회원·주문·스탬프 DB. 삭제하거나 GitHub에 올리지 마세요.
+- test/: 자동 테스트.
+- archive/backups/: 이전 작업 백업. Git에서 제외됩니다.
+- server.js, store.js: 서버와 DB 처리.
+- start.bat: 사이트 실행. npm start도 동일하게 사용합니다.
