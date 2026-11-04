@@ -1,0 +1,12 @@
+@echo off
+cd /d "%~dp0"
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js 24 or newer is required.
+  pause
+  exit /b 1
+)
+echo Open http://localhost:3000 in your browser.
+echo Keep this window open. Press Ctrl+C to stop.
+node --env-file-if-exists=.env server.js
+pause
