@@ -62,3 +62,23 @@ test('missing keys and live keys without HTTPS cannot create card orders',async 
   const config=await (await fetch('http://127.0.0.1:'+s.address().port+'/api/config')).json();assert.equal(config.configured,false);await new Promise(resolve=>s.close(resolve));app.store.close();
  }
 });
+test('member order tracking, coupons and administrator three-stage updates',async t=>{
+ const f=await fixture(t),member=await f.signup(),other=await f.signup('other@example.com'),admin=await f.signup('owner@example.com');
+ const created=await f.request('/api/orders',{requestKey:randomUUID(),items:cart},member.cookie);const order=created.data.order;
+ await f.request('/api/orders/'+order.id+'/confirm',{paymentKey:'tracking',amount:18000},member.cookie);
+ const rows=await f.request('/api/orders',undefined,member.cookie);assert.equal(rows.data[0].number,1);assert.equal(rows.data[0].items[0].name,'아메리카노');
+ assert.equal((await f.request('/api/orders/'+order.id,undefined,member.cookie)).data.number,1);
+ assert.equal((await f.request('/api/orders/'+order.id,undefined,other.cookie)).status,404);
+ assert.equal((await f.request('/api/orders/'+order.id)).status,401);
+ assert.equal((await f.request('/api/orders',undefined,other.cookie)).data.length,0);
+ assert.equal((await f.request('/api/coupons',undefined,member.cookie)).data.available,1);
+ assert.equal((await f.request('/api/coupons',undefined,other.cookie)).data.available,0);
+ assert.equal((await f.request('/api/orders/'+order.id+'/fulfillment',{status:'ready'},member.cookie)).status,403);
+ for(const status of ['received','preparing','ready']){
+   assert.equal((await f.request('/api/orders/'+order.id+'/fulfillment',{status},admin.cookie)).status,200);
+   assert.equal((await f.request('/api/orders',undefined,member.cookie)).data[0].fulfillment,status);
+ }
+ assert.equal((await f.request('/api/orders/'+order.id+'/fulfillment',{status:'completed'},admin.cookie)).status,400);
+ const reward=await f.request('/api/redeem',{requestKey:randomUUID(),temperature:'HOT'},member.cookie);assert.equal(reward.data.order.number,2);
+ const coupons=await f.request('/api/coupons',undefined,member.cookie);assert.equal(coupons.data.available,0);assert.equal(coupons.data.history[0].number,2);
+});

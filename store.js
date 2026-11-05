@@ -18,6 +18,10 @@ function createStore(filename) {
     CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_key TEXT NOT NULL,kind TEXT NOT NULL,items TEXT NOT NULL,amount INTEGER NOT NULL,stamps INTEGER NOT NULL,status TEXT NOT NULL,fulfillment TEXT NOT NULL DEFAULT 'received',payment_key TEXT UNIQUE,created TEXT NOT NULL,UNIQUE(user_id,request_key));
     CREATE TABLE IF NOT EXISTS ledger(id INTEGER PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),order_id TEXT NOT NULL REFERENCES orders(id),kind TEXT NOT NULL,delta INTEGER NOT NULL,created TEXT NOT NULL,UNIQUE(order_id,kind));`);
   const q = sql => db.prepare(sql);
+  db.exec(`CREATE TABLE IF NOT EXISTS order_numbers(number INTEGER PRIMARY KEY AUTOINCREMENT,order_id TEXT UNIQUE NOT NULL REFERENCES orders(id));
+    INSERT INTO order_numbers(order_id) SELECT id FROM orders WHERE status IN ('paid','canceled','partial_canceled','cancelling') AND NOT EXISTS(SELECT 1 FROM order_numbers WHERE order_id=orders.id) ORDER BY created,rowid;
+    UPDATE orders SET fulfillment='ready' WHERE fulfillment='completed';`);
+  const numberOrder = id => q('INSERT INTO order_numbers(order_id) SELECT ? WHERE NOT EXISTS(SELECT 1 FROM order_numbers WHERE order_id=?)').run(id,id);
   function tx(fn) { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (error) { db.exec('ROLLBACK'); throw error; } }
   const balance = id => q('SELECT COALESCE(SUM(delta),0) AS n FROM ledger WHERE user_id=?').get(id).n;
   const getOrder = id => q('SELECT * FROM orders WHERE id=?').get(id);
@@ -65,6 +69,7 @@ function createStore(filename) {
       if (balance(userId) < 10) fail('스탬프 10개가 필요합니다.',409);
       const order = insertOrder(userId,key,'reward',{items:[{id:'0-0',name:'아메리카노 (스탬프 교환)',quantity:1,temperature,size:'regular',unitPrice:0}],amount:0,stamps:0},'paid');
       entry(order,'redeem',-10);
+      numberOrder(order.id);
       return order;
     });
   }
@@ -76,14 +81,17 @@ function createStore(filename) {
       if (payment.status === 'DONE') {
         if (order.status === 'canceled') fail('이미 취소된 주문입니다.',409);
         entry(order,'earn',order.stamps);
+        numberOrder(order.id);
         q("UPDATE orders SET status='paid',payment_key=? WHERE id=?").run(payment.paymentKey,order.id);
       } else if (payment.status === 'CANCELED') {
         // 승인 후 서버가 중단됐어도 거래 원장에 적립과 회수를 한 번씩 기록한다.
         entry(order,'earn',order.stamps); entry(order,'reverse',-order.stamps);
+        numberOrder(order.id);
         q("UPDATE orders SET status='canceled',payment_key=? WHERE id=?").run(payment.paymentKey,order.id);
       } else if (payment.status === 'PARTIAL_CANCELED') {
         // shortcut: 외부 부분취소는 전액 스탬프 회수, 부분취소 UI 도입 시 비례 정책 필요.
         entry(order,'earn',order.stamps); entry(order,'reverse',-order.stamps);
+        numberOrder(order.id);
         q("UPDATE orders SET status='partial_canceled',payment_key=? WHERE id=?").run(payment.paymentKey,order.id);
       } else if (['ABORTED','EXPIRED'].includes(payment.status)) {
         if (['pending','confirming'].includes(order.status)) q("UPDATE orders SET status='failed' WHERE id=?").run(order.id);
@@ -97,8 +105,18 @@ function createStore(filename) {
       return getOrder(id);
     });
   }
-  const serialize = order => ({id:order.id,kind:order.kind,items:JSON.parse(order.items),amount:order.amount,stamps:order.stamps,status:order.status,fulfillment:order.fulfillment,created:order.created});
-  return {db,q,tx,balance,getOrder,ownOrder,price,createOrder,redeem,applyPayment,cancelReward,serialize,catalog,close:()=>db.close()};
+  function coupons(userId) {
+    const stamps=balance(userId);
+    return {stamps,available:Math.max(0,Math.floor(stamps/10)),progress:Math.max(0,stamps)%10,
+      history:q("SELECT * FROM orders WHERE user_id=? AND kind='reward' ORDER BY created DESC LIMIT 100").all(userId).map(serialize)};
+  }
+  function setFulfillment(id,status) {
+    if (!['received','preparing','ready'].includes(status)) fail('주문 상태가 올바르지 않습니다.');
+    const order=getOrder(id);if (!order || order.status!=='paid') fail('결제 완료 주문만 상태를 변경할 수 있습니다.',409);
+    q('UPDATE orders SET fulfillment=? WHERE id=?').run(status,id);return getOrder(id);
+  }
+  const serialize = order => ({id:order.id,number:q('SELECT number FROM order_numbers WHERE order_id=?').get(order.id)?.number || null,kind:order.kind,items:JSON.parse(order.items),amount:order.amount,stamps:order.stamps,status:order.status,fulfillment:order.fulfillment,created:order.created});
+  return {db,q,tx,balance,getOrder,ownOrder,price,createOrder,redeem,applyPayment,cancelReward,serialize,catalog,coupons,setFulfillment,close:()=>db.close()};
 }
 module.exports = {createStore,fail};
 
