@@ -13,10 +13,11 @@ function createApp(options={}) {
   const client=env.TOSS_CLIENT_KEY || '', secret=env.TOSS_SECRET_KEY || '';
   const testKeys=client.startsWith('test_ck_') && secret.startsWith('test_sk_');
   const liveKeys=client.startsWith('live_ck_') && secret.startsWith('live_sk_');
-  const configured=Boolean(testKeys || (liveKeys && secure && env.ALLOW_LIVE_PAYMENTS==='true'));
+  const demo=env.SHIM_DEMO_ORDERS==='true';
+  const configured=!demo && Boolean(testKeys || (liveKeys && secure && env.ALLOW_LIVE_PAYMENTS==='true'));
   const dataDir=path.join(__dirname,'data');
   if (!options.dbFile) fs.mkdirSync(dataDir,{recursive:true});
-  const store=createStore(options.dbFile || path.join(dataDir,'cafe.sqlite'));
+  const store=createStore(options.dbFile || path.join(dataDir,demo?'cafe-demo.sqlite':'cafe.sqlite'));
   const adminEmail=(env.ADMIN_EMAIL || '').trim().toLowerCase();
   const attempts=new Map(), locks=new Set();
   const authBusy={count:0};
@@ -78,7 +79,7 @@ function createApp(options={}) {
         throttle('write:'+req.socket.remoteAddress,300);
       }
       const route=req.method+' '+url.pathname;
-      if (route==='GET /api/config') return json(res,{configured,clientKey:configured?client:null,mode:configured?(testKeys?'test':'live'):'unconfigured'});
+      if (route==='GET /api/config') return json(res,{configured,clientKey:configured?client:null,mode:configured?(testKeys?'test':'live'):demo?'demo':'unconfigured'});
       if (route==='GET /api/menu') return json(res,store.catalog);
       const user=getUser(req);
       if (route==='GET /api/me') return json(res,{user:user?userView(user):null});
@@ -123,6 +124,12 @@ function createApp(options={}) {
       if (route==='GET /api/orders') return json(res,store.q('SELECT * FROM orders WHERE user_id=? ORDER BY created DESC LIMIT 100').all(user.id).map(store.serialize));
       if (route==='GET /api/coupons') return json(res,store.coupons(user.id));
       if (route==='GET /api/stamps') return json(res,{balance:store.balance(user.id),history:store.q('SELECT order_id,kind,delta,created FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 100').all(user.id)});
+      if (route==='POST /api/demo-orders') {
+        if (!demo) fail('시연 모드가 꺼져 있습니다.',404);
+        const input=await body(req);
+        const order=store.createDemoOrder(user.id,input.requestKey,input.items);
+        return json(res,{order:store.serialize(order)});
+      }
       if (route==='POST /api/orders') {
         if (!configured) fail('카드 결제 설정이 아직 완료되지 않았습니다.',503);
         const input=await body(req);
@@ -144,7 +151,11 @@ function createApp(options={}) {
         if (!order) fail('주문을 찾을 수 없습니다.',404);
         const input=await body(req);
         if (action==='fulfillment') {
-          if (!isAdmin) fail('관리자 권한이 필요합니다.',403);
+          if (!isAdmin) {
+            if (!demo || order.kind!=='demo') fail('관리자 권한이 필요합니다.',403);
+            const next={received:'preparing',preparing:'ready'}[order.fulfillment];
+            if (input.status!==order.fulfillment && input.status!==next) fail('시연 주문은 순서대로 진행해주세요.',409);
+          }
           store.setFulfillment(id,input.status);
           return json(res,{order:store.serialize(store.getOrder(id))});
         }

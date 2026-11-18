@@ -86,9 +86,14 @@
     });
     if(!state.cart.length)root.append(el('p','메뉴를 골라 장바구니에 담아주세요.','empty'));
     $('#cart-total').textContent=money(total);$('#cart-stamps').textContent='결제 완료 시 스탬프 '+stamps+'개 적립';
+    const demo=state.config?.mode==='demo';
+    $('#pay-button').hidden=demo;
+    $('#cart-payment-methods').hidden=demo;
+    $('#demo-order-button').hidden=!demo;
+    $('#demo-order-button').disabled=state.busy||!state.cart.length;
     $('#pay-button').disabled=state.busy||!state.cart.length;
     $('#pay-button').textContent=state.busy?'처리 중…':'결제하기';
-    if($('#checkout-status'))$('#checkout-status').textContent=!state.config?.configured?'결제 서비스 준비 중입니다. 결제수단 선택은 가능하지만 실제 결제는 아직 진행할 수 없습니다.':state.config.mode==='test'?'테스트 결제 모드 · 실제 금액은 청구되지 않습니다.':!state.user?'결제 전에 로그인해주세요. 담은 메뉴는 그대로 유지됩니다.':'카드 또는 계좌이체로 결제할 수 있습니다.';
+    if($('#checkout-status'))$('#checkout-status').textContent=demo?'시연용 주문 · 실제 결제 없음':!state.config?.configured?'결제 서비스 준비 중입니다. 결제수단 선택은 가능하지만 실제 결제는 아직 진행할 수 없습니다.':state.config.mode==='test'?'테스트 결제 모드 · 실제 금액은 청구되지 않습니다.':!state.user?'결제 전에 로그인해주세요. 담은 메뉴는 그대로 유지됩니다.':'카드 또는 계좌이체로 결제할 수 있습니다.';
     if ($('.cart-login')) $('.cart-login').hidden=Boolean(state.user);
     if ($('#basket-summary')) $('#basket-summary').textContent='장바구니 '+state.cart.reduce((s,i)=>s+i.quantity,0)+'개 · '+money(total);
   }
@@ -141,7 +146,7 @@
           Object.entries(fulfillment).forEach(([key,label],i)=>{const step=el('li',label,i<=current?'active':'');if(i===current)step.setAttribute('aria-current','step');steps.append(step);});root.append(steps);
         }else root.append(el('p',statuses[order.status]||order.status));
         order.items.forEach(item=>root.append(el('p',item.name+' '+item.temperature+' · '+(item.size==='large'?'사이즈업':'기본')+' · '+item.quantity+'개')));
-        root.append(el('h3',order.kind==='reward'?'무료 쿠폰 사용':money(order.amount)));
+        root.append(el('h3',order.kind==='reward'?'무료 쿠폰 사용':order.kind==='demo'?'시연용 · 실제 결제 없음':money(order.amount)));
         if(order.status==='paid')root.append(el('p',order.kind==='reward'?'스탬프 10개 사용 · 무료 음료 주문':'스탬프 '+order.stamps+'개 적립 완료'));
       }
       if($('#my-orders')){
@@ -155,9 +160,18 @@
             Object.entries(fulfillment).forEach(([key,label],i)=>{const step=el('li',label,i<=current?'active':'');if(i===current)step.setAttribute('aria-current','step');steps.append(step);});card.append(steps);
           }else card.append(el('p',statuses[order.status]||order.status,'order-status'));
           order.items.forEach(i=>card.append(el('p',i.name+' '+i.temperature+' · '+(i.size==='large'?'사이즈업':'기본')+' · '+i.quantity+'개')));
-          card.append(el('strong',order.kind==='reward'?'무료 쿠폰 사용':money(order.amount)));
-          if(order.status==='paid'&&order.kind==='card')card.append(el('small','스탬프 '+order.stamps+'개 적립'));
+          card.append(el('strong',order.kind==='reward'?'무료 쿠폰 사용':order.kind==='demo'?'시연용 · 실제 결제 없음':money(order.amount)));
+          if(order.status==='paid'&&['card','demo'].includes(order.kind))card.append(el('small','스탬프 '+order.stamps+'개 적립'));
           if(order.kind==='card'&&!['canceled','failed'].includes(order.status))card.append(button('결제 상태 확인',async event=>{event.currentTarget.disabled=true;try{await api('/api/orders/'+order.id+'/sync',{});await refreshMember();notice('결제 상태를 확인했습니다.');}catch(error){notice(error.message);}finally{event.target.disabled=false;}}));
+          const next={received:'preparing',preparing:'ready'}[order.fulfillment];
+          if(state.config?.mode==='demo'&&order.kind==='demo'&&order.status==='paid'&&next){
+            card.append(button('시연: '+fulfillment[next]+'로 변경',async event=>{
+              const control=event.currentTarget;
+              control.disabled=true;
+              try{await api('/api/orders/'+order.id+'/fulfillment',{status:next});await refreshMember();}
+              catch(error){notice(error.message);control.disabled=false;}
+            }));
+          }
           root.append(card);
         });
       }
@@ -224,6 +238,17 @@
     $('#payment-availability').textContent=!state.user?'결제를 진행하려면 로그인이 필요합니다.':!state.config?.configured?'매장 결제 서비스가 아직 연결되지 않았습니다. 실제 결제는 연결 후 이용할 수 있습니다.':state.config.mode==='test'?'테스트 결제 모드입니다. 실제 금액은 청구되지 않습니다.':'결제수단을 선택하고 결제창으로 이동해주세요.';
     $('#payment-continue').textContent=state.user?'선택한 수단으로 결제하기':'로그인하고 계속하기';
     $('#payment-dialog').showModal();
+  });
+  $('#demo-order-button')?.addEventListener('click',async()=>{
+    if(state.busy||!state.cart.length)return;
+    if(!state.user){location.assign('login.html?next=cart.html');return;}
+    state.busy=true;renderCart();
+    try {
+      state.key ||= crypto.randomUUID();persist();
+      const {order}=await api('/api/demo-orders',{requestKey:state.key,items:state.cart});
+      clearCart();location.assign('complete.html?orderId='+encodeURIComponent(order.id));
+    } catch(error){notice(error.message);}
+    finally{state.busy=false;renderCart();}
   });
   $('#payment-close')?.addEventListener('click',()=>$('#payment-dialog').close());
   $('#payment-form')?.addEventListener('submit',async event=>{
@@ -294,7 +319,7 @@
       return;
     }
     try {state.config=await api('/api/config');} catch {notice('메뉴 담기는 가능합니다. 서버 연결을 확인해주세요.');}
-    if ($('#payment-status')) $('#payment-status').textContent=state.config.mode==='test'?'테스트 결제 모드 · 실제 금액은 청구되지 않습니다.':state.config.mode==='live'?'카드 결제 가능 · 매장 픽업 주문':'카드 결제 준비 중 · 메뉴 선택과 장바구니 담기는 가능합니다.';
+    if ($('#payment-status')) $('#payment-status').textContent=state.config.mode==='demo'?'시연용 주문 · 실제 결제 없음':state.config.mode==='test'?'테스트 결제 모드 · 실제 금액은 청구되지 않습니다.':state.config.mode==='live'?'카드 결제 가능 · 매장 픽업 주문':'카드 결제 준비 중 · 메뉴 선택과 장바구니 담기는 가능합니다.';
     await refreshMember();
     if ($('#auth-form') && state.user) {location.replace(nextPage());return;}
     await handleReturn();

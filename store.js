@@ -61,6 +61,17 @@ function createStore(filename) {
     checkKey(key);
     return tx(() => previous(userId,key,'card') || insertOrder(userId,key,'card',price(lines),'pending'));
   }
+  function createDemoOrder(userId, key, lines) {
+    checkKey(key);
+    return tx(() => {
+      const existing=previous(userId,key,'demo');
+      if (existing) return existing;
+      const order=insertOrder(userId,key,'demo',price(lines),'paid');
+      entry(order,'earn',order.stamps);
+      numberOrder(order.id);
+      return order;
+    });
+  }
   function redeem(userId, key, temperature) {
     checkKey(key);
     if (!['HOT','ICE'].includes(temperature)) fail('HOT 또는 ICE를 선택해주세요.');
@@ -116,7 +127,7 @@ function createStore(filename) {
     q('UPDATE orders SET fulfillment=? WHERE id=?').run(status,id);return getOrder(id);
   }
   const serialize = order => ({id:order.id,number:q('SELECT number FROM order_numbers WHERE order_id=?').get(order.id)?.number || null,kind:order.kind,items:JSON.parse(order.items),amount:order.amount,stamps:order.stamps,status:order.status,fulfillment:order.fulfillment,created:order.created});
-  return {db,q,tx,balance,getOrder,ownOrder,price,createOrder,redeem,applyPayment,cancelReward,serialize,catalog,coupons,setFulfillment,close:()=>db.close()};
+  return {db,q,tx,balance,getOrder,ownOrder,price,createOrder,createDemoOrder,redeem,applyPayment,cancelReward,serialize,catalog,coupons,setFulfillment,close:()=>db.close()};
 }
 module.exports = {createStore,fail};
 

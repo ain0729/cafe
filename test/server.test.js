@@ -2,9 +2,9 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
 const {createApp}=require('../server');
-async function fixture(t) {
+async function fixture(t, overrides={}) {
  const payments=new Map();let confirmCalls=0,refundCalls=0,loseConfirm=false;
- const app=createApp({dbFile:':memory:',env:{BASE_URL:'http://localhost:3000',TOSS_CLIENT_KEY:'test_ck_unit',TOSS_SECRET_KEY:'test_sk_unit',ADMIN_EMAIL:'owner@example.com'},paymentFetch:async(url,init)=>{
+ const app=createApp({dbFile:':memory:',env:{BASE_URL:'http://localhost:3000',TOSS_CLIENT_KEY:'test_ck_unit',TOSS_SECRET_KEY:'test_sk_unit',ADMIN_EMAIL:'owner@example.com',...overrides},paymentFetch:async(url,init)=>{
    const endpoint=url.split('/v1/payments')[1];let value;
    if(endpoint==='/confirm') {confirmCalls++;const body=JSON.parse(init.body);value={orderId:body.orderId,paymentKey:body.paymentKey,totalAmount:body.amount,currency:'KRW',status:'DONE'};payments.set(body.orderId,value);if(loseConfirm){loseConfirm=false;throw new Error('timeout');}}
    else if(endpoint.startsWith('/orders/'))value=payments.get(endpoint.slice(8));
@@ -81,4 +81,29 @@ test('member order tracking, coupons and administrator three-stage updates',asyn
  assert.equal((await f.request('/api/orders/'+order.id+'/fulfillment',{status:'completed'},admin.cookie)).status,400);
  const reward=await f.request('/api/redeem',{requestKey:randomUUID(),temperature:'HOT'},member.cookie);assert.equal(reward.data.order.number,2);
  const coupons=await f.request('/api/coupons',undefined,member.cookie);assert.equal(coupons.data.available,0);assert.equal(coupons.data.history[0].number,2);
+});
+
+
+test('demo orders use their own API and award stamps once without a payment gateway',async t=>{
+ const f=await fixture(t,{SHIM_DEMO_ORDERS:'true'}),member=await f.signup(),other=await f.signup('other@example.com');
+ const input={requestKey:randomUUID(),items:cart};
+ assert.equal((await f.request('/api/config')).data.mode,'demo');
+ assert.equal((await f.request('/api/demo-orders',input)).status,401);
+ assert.equal((await f.request('/api/orders',input,member.cookie)).status,503);
+ const first=await f.request('/api/demo-orders',input,member.cookie);
+ assert.equal(first.status,200);
+ const {order}=first.data;
+ assert.equal(order.kind,'demo');
+ assert.equal(order.status,'paid');
+ assert.equal(order.number,1);
+ assert.equal(order.amount,18000);
+ assert.equal((await f.request('/api/demo-orders',input,member.cookie)).data.order.id,order.id);
+ assert.equal((await f.request('/api/me',undefined,member.cookie)).data.user.stamps,10);
+ const route='/api/orders/'+order.id+'/fulfillment';
+ assert.equal((await f.request(route,{status:'ready'},member.cookie)).status,409);
+ assert.equal((await f.request(route,{status:'preparing'},other.cookie)).status,404);
+ assert.equal((await f.request(route,{status:'preparing'},member.cookie)).data.order.fulfillment,'preparing');
+ assert.equal((await f.request(route,{status:'ready'},member.cookie)).data.order.fulfillment,'ready');
+ assert.equal((await f.request('/api/redeem',{requestKey:randomUUID(),temperature:'ICE'},member.cookie)).status,200);
+ assert.equal(f.counts.confirmCalls,0);
 });
