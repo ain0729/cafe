@@ -1,0 +1,24 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>마이페이지 | SHIM</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="commerce.css"></head><body data-page="account"><header><a class="logo" href="index.html">SHIM<span>COFFEE & A LITTLE PAUSE</span></a><details class="header-menu"><summary aria-label="전체 메뉴"><span class="menu-bars" aria-hidden="true"><i></i><i></i><i></i></span></summary><nav aria-label="주 메뉴"><p class="header-menu-title">EXPLORE SHIM</p><a href="space.html">공간</a><a href="index.html#menu">메뉴판</a><a href="order.html">주문하기</a><a href="orders.html">주문 내역</a><a href="membership.html">적립현황 · 쿠폰함</a><div class="auth-nav" aria-label="회원 메뉴"><a id="login-nav" href="login.html">로그인 / 회원가입</a></div></nav></details></header><main>
+  <section class="commerce auth-page">
+    <h2>마이페이지</h2>
+    <p id="member-loading" role="status">회원 정보를 확인하고 있습니다.</p>
+    <aside id="login-gate" class="login-gate" hidden>
+      <h3>로그인하고 계정 정보를 확인하세요.</h3>
+      <a id="gate-login" class="button" href="login.html?next=account.html">로그인 / 회원가입 →</a>
+    </aside>
+    <div id="member-area" hidden>
+      <h3 id="member-name"></h3>
+      <p>가입 이메일 <strong id="member-email"></strong></p>
+      <form id="password-change-form" class="auth-form">
+        <h3>비밀번호 변경</h3>
+        <label>현재 비밀번호<input id="current-password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required></label>
+        <label>새 비밀번호<input id="new-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+        <label>새 비밀번호 확인<input id="confirm-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+        <p class="fineprint">10~128자로 입력해 주세요. 변경하면 다른 기기에서 로그아웃됩니다.</p>
+        <button id="password-change-submit" type="submit">비밀번호 변경</button>
+        <p id="password-change-message" role="status" aria-live="polite"></p>
+      </form>
+      <p class="member-actions"><a href="orders.html">주문 내역 ↗</a> <a href="membership.html">적립현황 · 쿠폰함 ↗</a> <button id="logout-button" type="button">로그아웃</button></p>
+    </div>
+  </section>
+</main><div class="commerce-message"><p id="order-message" role="status" aria-live="polite"></p></div><footer><a class="logo" href="index.html">SHIM</a><p>SHIM, 당신의 일상에 작은 쉼.</p><span>COFFEE & A LITTLE PAUSE</span></footer><script src="menu.js"></script><script src="commerce.js"></script></body></html>

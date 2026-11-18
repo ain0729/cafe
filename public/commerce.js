@@ -100,10 +100,18 @@
   const numberLabel=order=>order.number?'주문번호 '+String(order.number).padStart(4,'0'):'결제 대기';
   function renderUser() {
     const user=state.user;
-    if($('#login-nav'))$('#login-nav').hidden=Boolean(user);
+    const login=$('#login-nav');
+    if(login){
+      login.hidden=false;
+      login.textContent=user?'마이페이지':'로그인 / 회원가입';
+      login.href=user?'account.html':'login.html';
+      if(user&&document.body.dataset.page==='account')login.setAttribute('aria-current','page');
+      else login.removeAttribute('aria-current');
+    }
     if($('#member-area'))$('#member-area').hidden=!user;
     if(user&&$('#member-area')){
-      $('#member-name').textContent=user.name+'님';$('#admin-link').hidden=!user.admin;
+      $('#member-name').textContent=user.name+'님';if($('#admin-link'))$('#admin-link').hidden=!user.admin;
+      if($('#member-email'))$('#member-email').textContent=user.email;
       if($('#stamp-count')){
         $('#stamp-count').textContent=user.stamps+'개';
         const available=Math.max(0,Math.floor(user.stamps/10));
@@ -203,7 +211,7 @@
   }
   function nextPage() {
     const next=new URLSearchParams(location.search).get('next') || 'cart.html';
-    return /^(order|orders|cart|membership|complete)\.html(?:\?[^#]*)?$/.test(next) ? next : 'membership.html';
+    return /^(order|orders|cart|membership|complete|account)\.html(?:\?[^#]*)?$/.test(next) ? next : 'membership.html';
   }
   function accountMode(mode) {
     const signup=mode==='signup';$('#auth-mode').value=mode;
@@ -217,7 +225,7 @@
   $('#account-signup')?.addEventListener('click',()=>accountMode('signup'));
   if ($('#account-login')) accountMode(new URLSearchParams(location.search).get('mode')==='signup'?'signup':'login');
   if($('#login-context')){
-    const target=nextPage();$('#login-context').textContent=target.startsWith('orders')?'로그인하면 주문 내역과 준비 상태를 확인할 수 있어요.':target.startsWith('membership')?'로그인하면 내 스탬프와 쿠폰을 확인할 수 있어요.':target.startsWith('complete')?'결제한 계정으로 로그인하면 주문 결과를 확인할 수 있어요.':'로그인 후 장바구니로 돌아가 결제를 계속합니다.';
+    const target=nextPage();$('#login-context').textContent=target.startsWith('account')?'로그인하면 마이페이지에서 계정 정보를 확인할 수 있어요.':target.startsWith('orders')?'로그인하면 주문 내역과 준비 상태를 확인할 수 있어요.':target.startsWith('membership')?'로그인하면 내 스탬프와 쿠폰을 확인할 수 있어요.':target.startsWith('complete')?'결제한 계정으로 로그인하면 주문 결과를 확인할 수 있어요.':'로그인 후 장바구니로 돌아가 결제를 계속합니다.';
   }
   if ($('#auth-switch')) {
     const next=new URLSearchParams(location.search).get('next');
@@ -227,6 +235,21 @@
     event.preventDefault();const submit=$('#auth-submit');submit.disabled=true;
     try {const data={email:$('#email').value,password:$('#password').value,name:$('#member-name-input').value};await api('/api/'+$('#auth-mode').value,data);$('#password').value='';location.assign(nextPage());}
     catch(error){notice(error.message);}finally{submit.disabled=false;}
+  });
+  $('#password-change-form')?.addEventListener('submit',async event=>{
+    event.preventDefault();
+    const form=event.currentTarget;
+    const submit=$('#password-change-submit'), message=$('#password-change-message');
+    if(submit.disabled)return;
+    const currentPassword=$('#current-password').value,newPassword=$('#new-password').value;
+    if(newPassword!==$('#confirm-password').value){message.textContent='새 비밀번호가 서로 일치하지 않습니다.';return;}
+    submit.disabled=true;message.textContent='';
+    try {
+      await api('/api/account/password',{currentPassword,newPassword});
+      form.reset();
+      message.textContent='비밀번호를 변경했습니다. 다른 기기는 로그아웃되었습니다.';
+    }catch(error){message.textContent=error.message;}
+    finally{submit.disabled=false;}
   });
   $('#logout-button')?.addEventListener('click',async()=>{try{await api('/api/logout',{});clearCart();state.redeemKey=null;location.assign('login.html');}catch(error){notice(error.message);}});
   $('#refresh-orders')?.addEventListener('click',()=>refreshMember().catch(error=>notice(error.message)));

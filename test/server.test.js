@@ -107,3 +107,24 @@ test('demo orders use their own API and award stamps once without a payment gate
  assert.equal((await f.request('/api/redeem',{requestKey:randomUUID(),temperature:'ICE'},member.cookie)).status,200);
  assert.equal(f.counts.confirmCalls,0);
 });
+test('password change reauthenticates, rotates session, and revokes old sessions',async t=>{
+ const f=await fixture(t);
+ const member=await f.signup();
+ const oldPassword='correct horse battery',newPassword='new battery password';
+ const credentials={email:'test@example.com',password:oldPassword};
+ const other=await f.request('/api/login',credentials);
+ const route='/api/account/password',input={currentPassword:oldPassword,newPassword};
+ assert.equal((await fetch('http://127.0.0.1:'+f.server.address().port+'/account.html')).status,200);
+ assert.equal((await f.request(route,input)).status,401);
+ assert.equal((await f.request(route,input,member.cookie,'https://evil.test')).status,403);
+ assert.equal((await f.request(route,{...input,currentPassword:'incorrect password'},member.cookie)).status,400);
+ const changed=await f.request(route,input,member.cookie);
+ assert.equal(changed.status,200);
+ assert.ok(changed.cookie);
+ assert.notEqual(changed.cookie,member.cookie);
+ assert.equal((await f.request('/api/me',undefined,member.cookie)).data.user,null);
+ assert.equal((await f.request('/api/me',undefined,other.cookie)).data.user,null);
+ assert.equal((await f.request('/api/me',undefined,changed.cookie)).data.user.email,credentials.email);
+ assert.equal((await f.request('/api/login',credentials)).status,401);
+ assert.equal((await f.request('/api/login',{...credentials,password:newPassword})).status,200);
+});

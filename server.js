@@ -59,7 +59,7 @@ function createApp(options={}) {
   const lookup=order=>gateway('GET','/orders/'+encodeURIComponent(order.id));
   async function locked(id,fn) { if (locks.has(id)) fail('주문을 처리 중입니다. 잠시 후 다시 확인해주세요.',409); locks.add(id); try { return await fn(); } finally { locks.delete(id); } }
   function json(res,value,status=200) { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'}); res.end(JSON.stringify(value)); }
-  const staticFiles={'/images/interior-counter-clean.png':'images/interior-counter-clean.png','/images/interior-tables-clean.png':'images/interior-tables-clean.png','/complete.html':'complete.html','/orders.html':'orders.html','/space.html':'space.html',"/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%201.png":"images/카페 내부 1.png","/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%202.png":"images/카페 내부 2.png","/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%203.png":"images/카페 내부 3.png",'/cart.html':'cart.html','/order.html':'order.html','/login.html':'login.html','/signup.html':'signup.html','/membership.html':'membership.html','/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/menu.js':'menu.js','/commerce.js':'commerce.js','/commerce.css':'commerce.css','/admin':'admin.html','/admin.js':'admin.js'};
+  const staticFiles={'/images/interior-counter-clean.png':'images/interior-counter-clean.png','/images/interior-tables-clean.png':'images/interior-tables-clean.png','/complete.html':'complete.html','/orders.html':'orders.html','/space.html':'space.html',"/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%201.png":"images/카페 내부 1.png","/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%202.png":"images/카페 내부 2.png","/images/%EC%B9%B4%ED%8E%98%20%EB%82%B4%EB%B6%80%203.png":"images/카페 내부 3.png",'/cart.html':'cart.html','/order.html':'order.html','/login.html':'login.html','/account.html':'account.html','/signup.html':'signup.html','/membership.html':'membership.html','/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/menu.js':'menu.js','/commerce.js':'commerce.js','/commerce.css':'commerce.css','/admin':'admin.html','/admin.js':'admin.js'};
   const server=http.createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','same-origin');
@@ -110,9 +110,33 @@ function createApp(options={}) {
             if (!account || !timingSafeEqual(Buffer.from(expected,'hex'),actual)) fail('이메일 또는 비밀번호를 확인해주세요.',401);
           }
         } finally { authBusy.count--; }
+        if (store.q('SELECT password FROM users WHERE id=?').get(account.id)?.password!==account.password) fail('다시 로그인해주세요.',401);
         session(res,account); return json(res,{user:userView(account)});
       }
       if (!user) fail('로그인이 필요합니다.',401);
+      if (route==='POST /api/account/password') {
+        throttle('password:'+user.id,10);
+        const {currentPassword,newPassword}=await body(req);
+        if ([currentPassword,newPassword].some(value=>typeof value!=='string'||value.length<10||value.length>128)) fail('비밀번호를 10~128자로 입력해주세요.');
+        if (currentPassword===newPassword) fail('현재 비밀번호와 다른 비밀번호를 입력해주세요.');
+        if (authBusy.count>=4) fail('인증 요청을 처리 중입니다. 다시 시도해주세요.',429);
+        let nextPassword;
+        authBusy.count++;
+        try {
+          const [salt,expected]=user.password.split(':');
+          const actual=await scrypt(currentPassword,salt,64);
+          if (!timingSafeEqual(Buffer.from(expected,'hex'),actual)) fail('현재 비밀번호가 올바르지 않습니다.',400);
+          const newSalt=randomBytes(16).toString('hex');
+          nextPassword=newSalt+':'+(await scrypt(newPassword,newSalt,64)).toString('hex');
+        } finally { authBusy.count--; }
+        store.tx(()=>{
+          const updated=store.q('UPDATE users SET password=? WHERE id=? AND password=?').run(nextPassword,user.id,user.password);
+          if (!updated.changes) fail('비밀번호가 이미 변경되었습니다. 다시 로그인해주세요.',409);
+          store.q('DELETE FROM sessions WHERE user_id=?').run(user.id);
+        });
+        session(res,user);
+        return json(res,{ok:true});
+      }
       if (route==='POST /api/logout') {
         const token=(req.headers.cookie || '').match(/cafe_session=([a-f0-9]{64})/)?.[1];
         if (token) store.q('DELETE FROM sessions WHERE token=?').run(hash(token));
