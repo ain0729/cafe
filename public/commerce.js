@@ -28,7 +28,7 @@
     const art=el('span',undefined,'drink-art tone-'+item.id.split('-')[0]);
     art.setAttribute('aria-hidden','true');
     const cup=el('span',undefined,item.category==='DESSERT'?'dessert-shape':'drink-cup');
-    cup.append(el('span','CAFE','cup-brand'));art.append(cup);return art;
+    cup.append(el('span','SHIM','cup-brand'));art.append(cup);return art;
   }
   function openProduct(item) {
     const dialog=$('#product-dialog');
@@ -303,4 +303,5 @@
   init().catch(error=>notice('서버 연결을 확인해주세요. '+error.message));
   if(['orders','membership','complete'].includes(document.body.dataset.page))setInterval(()=>{if(!document.hidden&&!state.busy)refreshMember().catch(error=>notice(error.message));},10000);
 })();
+
 
